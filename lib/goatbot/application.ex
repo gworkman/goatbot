@@ -8,14 +8,17 @@ defmodule Goatbot.Application do
   @impl true
   def start(_type, _args) do
     # Hardware links come up before the robot, so its components find them.
+    # The endpoint comes last: children stop in reverse order, so the robot is
+    # disarmed before the dashboard watching it goes away.
     children =
       target_children() ++
         [
-          # Children for all targets
-          # Starts a worker by calling: Goatbot.Worker.start_link(arg)
-          # {Goatbot.Worker, arg},
+          GoatbotWeb.Telemetry,
+          {Phoenix.PubSub, name: Goatbot.PubSub},
           {Goatbot.Robot, robot_opts()},
-          Goatbot.Remote
+          # Drive commands from the badge, over distribution.
+          Goatbot.Remote,
+          GoatbotWeb.Endpoint
         ]
 
     # See https://elixir.hexdocs.pm/Supervisor.html
@@ -42,6 +45,11 @@ defmodule Goatbot.Application do
         # Starts a worker by calling: Target.Worker.start_link(arg)
         # {Target.Worker, arg},
 
+        # Joins a configured wifi network, or brings up the robot's own access
+        # point when there is none. Ahead of everything so the board is
+        # reachable even when the robot fails to start.
+        BB.NSK.Network.Monitor,
+
         # The STM32 power-management coprocessor on UART2: battery telemetry
         # and the three buttons. `Goatbot.Sensor.Power` puts both on PubSub.
         %{
@@ -50,7 +58,12 @@ defmodule Goatbot.Application do
         },
 
         # The Erlang node the badge drives the robot through, named for the wifi address.
-        Goatbot.Distribution
+        Goatbot.Distribution,
+
+        # The e-paper panel, its renderer and the sink between them. Ahead of
+        # the robot, so the panel is still there to be blanked when the robot's
+        # face controller shuts down.
+        BB.NSK.Display.Supervisor
       ]
     end
   end

@@ -15,7 +15,7 @@ defmodule Goatbot.Robot do
 
     command :disarm do
       handler(BB.Command.Disarm)
-      allowed_states([:idle, :balancing, :fallen])
+      allowed_states([:idle, :balancing, :fallen, :lifted])
     end
 
     # Disarmed only: taking the operating system out from under a balancing
@@ -27,7 +27,19 @@ defmodule Goatbot.Robot do
 
     command :stand do
       handler(BB.NSK.Command.Stand)
-      allowed_states([:idle, :fallen])
+      allowed_states([:idle, :fallen, :lifted])
+    end
+
+    # Issued by `Goatbot.Balancer` when the wheels run away in the air.
+    command :lift do
+      handler(Goatbot.Command.Lift)
+      allowed_states([:balancing])
+    end
+
+    # On or off, like button 3. See `Goatbot.Explore`.
+    command :explore do
+      handler(Goatbot.Command.Explore)
+      allowed_states([:balancing])
     end
 
     # From `:idle` as well as `:balancing`, because a robot armed while
@@ -395,6 +407,25 @@ defmodule Goatbot.Robot do
         doc: "Lean error past which it gives up and waits to be stood back up"
       )
 
+      # In the air the wheels can't move the body, so the integral winds them
+      # up to the motors' 31 rad/s. On the floor the command stays near 11 at
+      # most. See `Goatbot.Balancer`.
+      param(:lift_command,
+        type: :float,
+        default: 25.0,
+        min: 5.0,
+        max: 31.4,
+        doc: "Wheel rad/s which, held for `lift_time`, means it has been picked up"
+      )
+
+      param(:lift_time,
+        type: :float,
+        default: 0.3,
+        min: 0.05,
+        max: 3.0,
+        doc: "Seconds above `lift_command` before it counts as lifted"
+      )
+
       # Tight on purpose. Any looser and the robot takes over while still moving
       # in the operator's hand, and then spends its life answering that
       # transient rather than balancing.
@@ -659,6 +690,71 @@ defmodule Goatbot.Robot do
         doc: "Wheel rad/s of differential per rad/s of requested turn"
       )
     end
+
+    # `Goatbot.Explore`, toggled with button 3. Names are unique across every
+    # group, hence the `explore_` prefixes.
+    group :explore do
+      # 0.5 of `drive_speed`'s 0.2 m/s: 10 cm/s. Brave, not aggressive.
+      param(:explore_throttle,
+        type: :float,
+        default: 0.5,
+        min: 0.1,
+        max: 1.0,
+        doc: "Fraction of full drive to explore at"
+      )
+
+      # The balance wobbles by a degree or so; a knock moves it by several.
+      # Lower it if it pushes against walls, raise it if it shies at nothing.
+      param(:bump_angle,
+        type: {:unit, :degree},
+        default: ~u(3 degree),
+        min: ~u(0.5 degree),
+        max: ~u(15 degree),
+        doc: "How far the lean must jump from its recent average to count as a bump"
+      )
+
+      param(:explore_backoff,
+        type: :float,
+        default: 1.2,
+        min: 0.2,
+        max: 5.0,
+        doc: "Seconds to reverse after a bump"
+      )
+
+      param(:explore_min_turn,
+        type: {:unit, :degree},
+        default: ~u(45 degree),
+        min: ~u(0 degree),
+        max: ~u(360 degree),
+        doc: "Smallest turn after backing off"
+      )
+
+      param(:explore_max_turn,
+        type: {:unit, :degree},
+        default: ~u(180 degree),
+        min: ~u(0 degree),
+        max: ~u(360 degree),
+        doc: "Largest turn after backing off"
+      )
+
+      # A third of the 10 cm/s it explores at. Pushing against something it
+      # can't get past, it barely moves without the lean ever jumping.
+      param(:stall_speed,
+        type: :float,
+        default: 0.03,
+        min: 0.0,
+        max: 0.2,
+        doc: "Speed, in m/s, below which a forward run counts as stuck"
+      )
+
+      param(:stall_time,
+        type: :float,
+        default: 1.5,
+        min: 0.2,
+        max: 10.0,
+        doc: "Seconds below `stall_speed` before it backs off and turns"
+      )
+    end
   end
 
   controllers do
@@ -670,7 +766,9 @@ defmodule Goatbot.Robot do
        ki: param([:balance, :integral_gain]),
        kd: param([:balance, :derivative_gain]),
        integral_limit: param([:balance, :integral_limit]),
-       fall_angle: param([:balance, :fall_angle])},
+       fall_angle: param([:balance, :fall_angle]),
+       lift_command: param([:balance, :lift_command]),
+       lift_time: param([:balance, :lift_time])},
       # No hardware of its own (it only publishes to the wheels, which are
       # swapped for simulated ones), so it can run under SIMULATE too.
       simulation: :start
@@ -733,11 +831,33 @@ defmodule Goatbot.Robot do
     #    drive_release: param([:drive, :release])}
     # )
 
-    controller(:leds, {BB.NSK.Leds.Controller, brightness: 40})
+    # Every state breathes, fallen included; see `Goatbot.Leds`.
+    controller(:leds, {Goatbot.Leds, brightness: 40})
+
+    # The e-paper panel shows a face rather than `BB.NSK.Display.Controller`'s
+    # status screen. Runs without the panel too, drawing nowhere.
+    controller(:face, Goatbot.Face, simulation: :start)
+
+    controller(
+      :explorer,
+      {Goatbot.Explore,
+       throttle: param([:explore, :explore_throttle]),
+       bump_angle: param([:explore, :bump_angle]),
+       backoff: param([:explore, :explore_backoff]),
+       min_turn: param([:explore, :explore_min_turn]),
+       max_turn: param([:explore, :explore_max_turn]),
+       stall_speed: param([:explore, :stall_speed]),
+       stall_time: param([:explore, :stall_time])},
+      simulation: :start
+    )
+
+    # Button 1 arms and disarms, button 2 stands, button 3 explores.
+    controller(:buttons, Goatbot.ButtonController, simulation: :start)
   end
 
   states do
     state(:balancing, doc: "Actively holding itself upright")
     state(:fallen, doc: "Past recovering, wheels braked, waiting to be stood back up")
+    state(:lifted, doc: "Picked up, wheels braked, waiting to be put down and stood back up")
   end
 end
