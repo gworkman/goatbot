@@ -9,9 +9,10 @@ defmodule Goatbot.Remote do
       send({Goatbot.Remote, :"goatbot@goatbot.local"}, {:drive, self(), throttle, turn})
 
   `throttle` and `turn` are both fractions from -1 to 1: positive is forwards
-  and to the robot's left. The throttle goes to `BB.NSK.Drive.command/3`
-  as it is, and the turn is scaled by the `[:yaw, :turn_rate]` parameter, so
-  the robot keeps its own limits. Each command is answered with
+  and to the robot's left. Both lose a `[:drive, :remote_deadzone]` around
+  zero, then the throttle goes to `BB.NSK.Drive.command/3` and the turn is
+  scaled by the `[:yaw, :turn_rate]` parameter, so the robot keeps its own
+  limits. Each command is answered with
   `{:goatbot, state}`, the robot's state machine state, which tells the
   sender that the link is up. `{:hello, from}` gets the same answer without
   driving.
@@ -41,19 +42,36 @@ defmodule Goatbot.Remote do
   @doc """
   The throttle and turn rate, in rad/s, for a request of `throttle` and
   `turn` (both -1 to 1) at a full `turn_rate`. Anything else reads as zero.
-  """
-  @spec command(term, term, number) :: {float, float}
-  def command(throttle, turn, turn_rate), do: {fraction(throttle), fraction(turn) * turn_rate}
 
-  defp fraction(value) when is_number(value), do: value |> max(-1.0) |> min(1.0) |> Kernel.+(0.0)
-  defp fraction(_value), do: 0.0
+  Within `deadzone` of zero reads as zero, and the rest is stretched so a full
+  request is still a full one. The badge steers by tilting, and a hand never
+  holds it level: without this a badge at rest asked for a small drive the
+  whole time, and every one of those requests stopped
+  `Goatbot.VelocityController` learning its trim.
+  """
+  @spec command(term, term, number, number) :: {float, float}
+  def command(throttle, turn, turn_rate, deadzone \\ 0.0),
+    do: {fraction(throttle, deadzone), fraction(turn, deadzone) * turn_rate}
+
+  defp fraction(value, deadzone) when is_number(value) do
+    value = value |> max(-1.0) |> min(1.0) |> Kernel.+(0.0)
+
+    if abs(value) <= deadzone,
+      do: 0.0,
+      else: (value - deadzone * sign(value)) / (1.0 - deadzone)
+  end
+
+  defp fraction(_value, _deadzone), do: 0.0
+
+  defp sign(value) when value < 0.0, do: -1.0
+  defp sign(_value), do: 1.0
 
   @impl true
   def init(_opts), do: {:ok, %{peer: nil}}
 
   @impl true
   def handle_info({:drive, from, throttle, turn}, state) when is_pid(from) do
-    {throttle, turn} = command(throttle, turn, turn_rate())
+    {throttle, turn} = command(throttle, turn, turn_rate(), deadzone())
     safely(fn -> BB.NSK.Drive.command(@robot, throttle, turn) end)
     {:noreply, answer(from, state)}
   end
@@ -101,6 +119,9 @@ defmodule Goatbot.Remote do
   end
 
   defp turn_rate, do: safely(fn -> BB.Parameter.get!(@robot, [:yaw, :turn_rate]) end) || 1.0
+
+  defp deadzone,
+    do: safely(fn -> BB.Parameter.get!(@robot, [:drive, :remote_deadzone]) end) || 0.0
 
   defp safely(fun) do
     fun.()

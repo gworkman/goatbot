@@ -594,6 +594,17 @@ defmodule Goatbot.Robot do
         max: ~u(180 degree_per_second),
         doc: "How fast the drive lean returns towards zero, which is how quickly letting go stops"
       )
+
+      # The badge steers by tilting, and a hand never holds it level. Raise it
+      # if the robot creeps while the badge is meant to be at rest.
+      param(:remote_deadzone,
+        type: :float,
+        default: 0.1,
+        min: 0.0,
+        max: 0.5,
+        doc:
+          "Fraction of a `Goatbot.Remote` throttle or turn, either side of zero, that reads as zero"
+      )
     end
 
     group :yaw do

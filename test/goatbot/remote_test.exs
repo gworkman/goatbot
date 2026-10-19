@@ -21,6 +21,19 @@ defmodule Goatbot.RemoteTest do
     end
   end
 
+  describe "command/4" do
+    test "reads a badge held nearly level as zero" do
+      assert Remote.command(0.08, -0.1, 2.0, 0.1) == {0.0, 0.0}
+    end
+
+    test "stretches the rest so a full request is still full" do
+      {throttle, turn} = Remote.command(0.55, -1.0, 2.0, 0.1)
+
+      assert_in_delta throttle, 0.5, 1.0e-9
+      assert_in_delta turn, -2.0, 1.0e-9
+    end
+  end
+
   describe "describe/1" do
     test "a finished command is ok" do
       assert Remote.describe({:ok, :balancing}) == "ok"
