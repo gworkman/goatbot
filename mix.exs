@@ -15,7 +15,8 @@ defmodule Goatbot.MixProject do
       listeners: listeners(Mix.target(), Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      releases: [{@app, release()}]
+      releases: [{@app, release()}],
+      aliases: aliases()
     ]
   end
 
@@ -38,6 +39,15 @@ defmodule Goatbot.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      # The phone controller: a LiveView served from the robot. JS is bundled
+      # with esbuild; there is no Tailwind, the one page has its own CSS.
+      {:phoenix, "~> 1.8"},
+      {:phoenix_html, "~> 4.1"},
+      {:phoenix_live_view, "~> 1.1"},
+      {:bandit, "~> 1.5"},
+      {:jason, "~> 1.4"},
+      {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
+      {:lazy_html, ">= 0.1.0", only: :test},
       {:rustler, ">= 0.0.0", optional: true},
       {:circuits_i2c, "~> 2.1"},
       {:circuits_gpio, "~> 2.1"},
@@ -84,4 +94,15 @@ defmodule Goatbot.MixProject do
   # Uncomment the following line if using Phoenix > 1.8.
   # defp listeners(:host, :dev), do: [Phoenix.CodeReloader]
   defp listeners(_, _), do: []
+
+  # `firmware` builds the controller page's assets first, so a firmware never
+  # ships without them or with stale ones.
+  defp aliases do
+    [
+      "assets.setup": ["esbuild.install --if-missing"],
+      "assets.build": ["esbuild goatbot"],
+      "assets.deploy": ["esbuild goatbot --minify", "phx.digest"],
+      firmware: ["assets.deploy", "firmware"]
+    ]
+  end
 end

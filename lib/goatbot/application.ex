@@ -8,14 +8,15 @@ defmodule Goatbot.Application do
   @impl true
   def start(_type, _args) do
     # Hardware links come up before the robot, so its components find them.
+    # The endpoint comes last: children stop in reverse order, so the phone
+    # controller goes (stopping the robot as it does) before the robot does.
     children =
       target_children() ++
         [
-          # Children for all targets
-          # Starts a worker by calling: Goatbot.Worker.start_link(arg)
-          # {Goatbot.Worker, arg},
+          {Phoenix.PubSub, name: Goatbot.PubSub},
           {Goatbot.Robot, robot_opts()},
-          Goatbot.Remote
+          Goatbot.Remote,
+          GoatbotWeb.Endpoint
         ]
 
     # See https://elixir.hexdocs.pm/Supervisor.html

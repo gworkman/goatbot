@@ -1,0 +1,168 @@
+/* The phone controller, `GoatbotWeb.ControllerLive`. One screen, one hand:
+   status at the top, three buttons, and the stick taking the rest. */
+
+:root {
+  --bg: #111418;
+  --panel: #1b2027;
+  --text: #e8ebef;
+  --muted: #8b94a1;
+  --green: #2fb36b;
+  --blue: #3b82f6;
+  --amber: #e0a526;
+  --red: #e5484d;
+  --pink: #e04fa8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* No pull-to-refresh, rubber banding or text selection under a thumb. */
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* LiveView's wrapper divs, out of the layout. */
+[data-phx-session] {
+  display: contents;
+}
+
+.controller {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100dvh;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.robot {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.state {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.state-disarmed { color: var(--blue); }
+.state-idle { color: var(--green); }
+.state-balancing { color: var(--green); background: #183324; }
+.state-fallen { color: var(--pink); }
+.state-error { color: var(--red); }
+
+.error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #3a1c1e;
+  color: #ffb4b6;
+  font-size: 0.9rem;
+}
+
+.buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.button {
+  min-height: 64px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  touch-action: manipulation;
+}
+
+.button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.button:disabled {
+  opacity: 0.35;
+}
+
+.button.arm { background: var(--green); color: #06170e; }
+.button.disarm { background: var(--amber); color: #1f1400; }
+.button.stand { background: var(--blue); }
+.button.poweroff { background: #3a1c1e; color: #ffb4b6; }
+
+.drive {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.stick {
+  position: relative;
+  width: min(80vw, 50dvh, 360px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, #232a33 0%, #1b2027 70%);
+  box-shadow: inset 0 0 0 2px #2c343e;
+  /* The stick is the robot's: no scrolling, zooming or back-swipes from it. */
+  touch-action: none;
+}
+
+.stick-ring {
+  position: absolute;
+  inset: 25%;
+  border-radius: 50%;
+  border: 1px dashed #3a4350;
+  pointer-events: none;
+}
+
+.stick-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 36%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #59636f, #343c46);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%);
+  transition: transform 150ms ease-out;
+  pointer-events: none;
+}
+
+/* Follows the finger without lag while held; springs back when let go. */
+.stick-knob.held {
+  transition: none;
+  background: radial-gradient(circle at 35% 35%, #6b9cf7, #2f5fc0);
+}
+
+.readout {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
