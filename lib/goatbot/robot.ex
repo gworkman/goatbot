@@ -427,6 +427,16 @@ defmodule Goatbot.Robot do
         max: ~u(200 degree_per_second),
         doc: "How still it must be held before taking over, so it can't grab mid-air"
       )
+
+      # Armed and held within `catch_angle` and `catch_rate` this long, it
+      # stands by itself. See `Goatbot.Balancer`.
+      param(:stand_hold,
+        type: :float,
+        default: 3.0,
+        min: 0.5,
+        max: 10.0,
+        doc: "Seconds an armed robot must be held upright and still before it stands by itself"
+      )
     end
 
     # `Goatbot.VelocityController`, which leans the robot against its own
@@ -704,7 +714,8 @@ defmodule Goatbot.Robot do
        integral_limit: param([:balance, :integral_limit]),
        fall_angle: param([:balance, :fall_angle]),
        catch_angle: param([:balance, :catch_angle]),
-       catch_rate: param([:balance, :catch_rate])},
+       catch_rate: param([:balance, :catch_rate]),
+       stand_hold: param([:balance, :stand_hold])},
       # No hardware of its own (it only publishes to the wheels, which are
       # swapped for simulated ones), so it can run under SIMULATE too.
       simulation: :start

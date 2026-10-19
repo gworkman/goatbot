@@ -9,9 +9,18 @@ defmodule Goatbot.Balancer do
       target  = setpoint + offset
       command = kp * error + ki * ∫error dt + kd * rate,  error = lean - target
 
-  It only drives while the robot is `:balancing`. Arm the robot, hold it
-  upright, then run `Goatbot.Robot.stand/0` to hand it over. If the lean error
-  passes `fall_angle`, it brakes the wheels and runs `Goatbot.Robot.fall/0`.
+  It only drives while the robot is `:balancing`. Arm the robot and hold it
+  upright and still for `stand_hold` seconds, and it stands by itself; or run
+  `Goatbot.Robot.stand/0` to hand it over at once. If the lean error passes
+  `fall_angle`, it brakes the wheels and runs `Goatbot.Robot.fall/0`.
+
+  ## Standing by itself
+
+  While armed and not balancing (`:idle` after arming, or `:fallen`), every
+  sample that would pass the catch below counts towards `stand_hold`; one that
+  wouldn't starts the count again. Held there for the whole time, it runs
+  `Goatbot.Robot.stand/0`. A robot lying on its side, or being carried about,
+  never gets there.
 
   ## Catching
 
@@ -88,6 +97,11 @@ defmodule Goatbot.Balancer do
         default: ~u(4 degree_per_second),
         doc: "Lean rate below which a stand takes over"
       ],
+      stand_hold: [
+        type: :float,
+        default: 3.0,
+        doc: "Seconds an armed robot must be held upright and still before it stands by itself"
+      ],
       max_wheel_speed: [
         type: :float,
         default: 31.4,
@@ -101,6 +115,8 @@ defmodule Goatbot.Balancer do
       left_wheel: [type: :atom, default: :left_wheel],
       right_wheel: [type: :atom, default: :right_wheel]
     ]
+
+  require Logger
 
   alias BB.Message
   alias BB.Message.Sensor.JointState
@@ -138,7 +154,8 @@ defmodule Goatbot.Balancer do
       differential: 0.0,
       differential_at: nil,
       target: nil,
-      caught?: false
+      caught?: false,
+      upright_since: nil
     }
 
     {:ok, configure(opts, state)}
@@ -168,7 +185,8 @@ defmodule Goatbot.Balancer do
          differential: 0.0,
          differential_at: nil,
          target: nil,
-         caught?: false
+         caught?: false,
+         upright_since: nil
      }}
   end
 
@@ -187,7 +205,53 @@ defmodule Goatbot.Balancer do
     {:noreply, step(state, lean, rate, msg.monotonic_time)}
   end
 
+  def handle_info(
+        {:bb, _path, %Message{payload: %JointState{positions: [lean], velocities: [rate]}} = msg},
+        %{mode: mode} = state
+      )
+      when mode in [:idle, :fallen] do
+    {:noreply, wait_to_stand(state, lean, rate, msg.monotonic_time)}
+  end
+
   def handle_info(_message, state), do: {:noreply, state}
+
+  # No offset outside `:balancing`: the velocity loop only publishes one while
+  # balancing, and the transition cleared the last.
+  defp wait_to_stand(state, lean, rate, now) do
+    upright? = catchable?(lean - state.setpoint, rate, state.catch_angle, state.catch_rate)
+
+    case hold(state.upright_since, upright?, now, state.stand_hold) do
+      {:stand, since} ->
+        case state.robot.stand() do
+          {:ok, _pid} ->
+            Logger.info("Held upright for #{state.stand_hold} s: standing")
+
+          {:error, reason} ->
+            Logger.warning("Held upright, but stand refused: #{inspect(reason)}")
+        end
+
+        # Restarted rather than cleared, so the samples that arrive before the
+        # transition comes back don't each ask again.
+        %{state | upright_since: since}
+
+      {:wait, since} ->
+        %{state | upright_since: since}
+    end
+  end
+
+  @doc """
+  Whether a robot that has been upright since `since` (nil: it isn't) should
+  stand now, given whether this sample at `now` (ns) is upright. `:stand` once
+  it has been upright for `hold` seconds, with the count restarted; `:wait`
+  otherwise, with the count to carry on with.
+  """
+  @spec hold(integer | nil, boolean, integer, float) :: {:stand | :wait, integer | nil}
+  def hold(_since, false, _now, _hold), do: {:wait, nil}
+  def hold(nil, true, now, _hold), do: {:wait, now}
+
+  def hold(since, true, now, hold) do
+    if now - since >= hold * 1_000_000_000, do: {:stand, now}, else: {:wait, since}
+  end
 
   defp step(state, lean, rate, now) do
     target = state.setpoint + current_offset(state, now)
@@ -273,6 +337,7 @@ defmodule Goatbot.Balancer do
       fall_angle: Units.to_radians(Keyword.fetch!(opts, :fall_angle)),
       catch_angle: Units.to_radians(Keyword.fetch!(opts, :catch_angle)),
       catch_rate: Units.to_radians_per_second(Keyword.fetch!(opts, :catch_rate)),
+      stand_hold: Keyword.fetch!(opts, :stand_hold),
       offset_timeout: Keyword.fetch!(opts, :offset_timeout),
       max_wheel_speed: Keyword.fetch!(opts, :max_wheel_speed),
       left_wheel: Keyword.fetch!(opts, :left_wheel),

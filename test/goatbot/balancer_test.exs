@@ -55,4 +55,21 @@ defmodule Goatbot.BalancerTest do
       refute state.caught?
     end
   end
+
+  describe "hold/4" do
+    @s 1_000_000_000
+
+    test "starts counting at the first upright sample" do
+      assert Balancer.hold(nil, true, 5 * @s, 3.0) == {:wait, 5 * @s}
+    end
+
+    test "stands once it has been upright for the whole hold, and starts again" do
+      assert Balancer.hold(5 * @s, true, 7 * @s, 3.0) == {:wait, 5 * @s}
+      assert Balancer.hold(5 * @s, true, 8 * @s, 3.0) == {:stand, 8 * @s}
+    end
+
+    test "a sample that isn't upright starts the count again" do
+      assert Balancer.hold(5 * @s, false, 7 * @s, 3.0) == {:wait, nil}
+    end
+  end
 end
