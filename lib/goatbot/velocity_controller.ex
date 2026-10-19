@@ -67,11 +67,19 @@ defmodule Goatbot.VelocityController do
 
   That is an integral of velocity, which would be a position hold, except that
   it only learns while nobody is driving and the robot is moving slower than
-  `trim_window`. A crawl is well under that and is trimmed out over
-  `damping / trim_gain` seconds; a shove is well over it for most of its travel,
-  so the robot doesn't walk back to where it was pushed from. The trim is kept,
+  `trim_window`. A crawl is under that and is trimmed out over
+  `damping / trim_gain` seconds; a shove is mostly over it, so the robot
+  doesn't walk all the way back to where it was pushed from. The trim is kept,
   within ±`trim_limit`, across falls and stands, since the balance point doesn't
   change when the robot falls over.
+
+  The window has to cover the crawl the whole `trim_limit` makes: a balance
+  point off by b crawls at b / `damping`, 8.1 rad/s for 2°. With a window of 3
+  rad/s any error past 0.74° was never learned, and the robot drove off at zero
+  throttle for as long as it was left standing.
+
+  `limit` bounds the braking and driving term either side of the trim, not the
+  sum, so a trim near its limit leaves the same authority both ways.
 
   It also waits `trim_holdoff` after standing up and after any throttle or turn.
   The tail of a stop is a slow crawl too, and learning from it pulled the robot
@@ -118,7 +126,7 @@ defmodule Goatbot.VelocityController do
       ],
       trim_window: [
         type: :float,
-        default: 3.0,
+        default: 10.0,
         doc: "Average command, in rad/s, above which the trim stops learning"
       ],
       trim_holdoff: [
@@ -322,11 +330,14 @@ defmodule Goatbot.VelocityController do
          else: state.trim
 
     # The filtered command is the wheel speed in rad/s; the reference is in m/s.
-    offset =
-      (trim - state.gain * velocity -
-         state.damping * (average - speed_ref / state.wheel_radius))
+    # Limited around the trim rather than with it, so a learned trim doesn't
+    # leave less braking and driving one way than the other.
+    drive =
+      (-state.gain * velocity - state.damping * (average - speed_ref / state.wheel_radius))
       |> max(-state.limit)
       |> min(state.limit)
+
+    offset = trim + drive
 
     %{
       state

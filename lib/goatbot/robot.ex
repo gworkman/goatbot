@@ -459,12 +459,14 @@ defmodule Goatbot.Robot do
         doc: "Seconds the wheel command is averaged over"
       )
 
+      # For braking and driving, on top of the trim, so a learned trim doesn't
+      # leave less authority one way than the other.
       param(:velocity_limit,
         type: {:unit, :degree},
         default: ~u(5 degree),
         min: ~u(0 degree),
         max: ~u(15 degree),
-        doc: "Largest lean offset it may ask for"
+        doc: "Largest lean offset it may ask for, either side of the trim"
       )
 
       # Driving: a held throttle sets a target speed the loop leans towards.
@@ -521,8 +523,8 @@ defmodule Goatbot.Robot do
       )
 
       # Learns the balance point from the crawl while standing still. 0.001
-      # trims out a crawl in about damping / 0.001 = 4 s. Only below the window
-      # (3 rad/s is 6.5 cm/s), so a shove isn't walked back.
+      # trims out a crawl in about damping / 0.001 = 4 s. Only below the
+      # window, so a shove isn't walked back.
       param(:velocity_trim,
         type: :float,
         default: 0.001,
@@ -531,9 +533,14 @@ defmodule Goatbot.Robot do
         doc: "Radians of trim learned per radian the wheels turn while standing still"
       )
 
+      # 10 rad/s, 21 cm/s. A balance point off by b crawls at b / damping, so
+      # the window has to cover the whole `velocity_trim_limit`: 2° is 8.1
+      # rad/s. At the old 3 anything past 0.74° was never learned, and the robot
+      # drove off at zero throttle. A slow shove is now partly learned, and
+      # walked back that much.
       param(:velocity_trim_window,
         type: :float,
-        default: 3.0,
+        default: 10.0,
         min: 0.1,
         max: 20.0,
         doc: "Average wheel command, in rad/s, above which the trim stops learning"
