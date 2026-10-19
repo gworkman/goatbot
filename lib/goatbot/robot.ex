@@ -188,7 +188,9 @@ defmodule Goatbot.Robot do
                       # there, which on a host would take the supervision tree with it.
                       if Mix.target() != :host do
                         # No magnetometer, so the chip publishes an identity
-                        # orientation and this fuses a real one.
+                        # orientation and this fuses a real one, started from
+                        # the accelerometer's tilt rather than from identity —
+                        # see `Goatbot.Estimator.SeededMahony`.
                         sensor :imu,
                                {BB.Sensor.BMI323,
                                 bus: "i2c-0",
@@ -201,7 +203,7 @@ defmodule Goatbot.Robot do
                                 publish_rate: param([:sampling, :publish_rate])} do
                           estimator(
                             :orientation,
-                            {BB.Estimator.Ahrs.Mahony,
+                            {Goatbot.Estimator.SeededMahony,
                              kp: param([:ahrs, :kp]), ki: param([:ahrs, :ki])}
                           )
                         end
