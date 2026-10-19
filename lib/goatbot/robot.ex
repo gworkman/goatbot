@@ -111,11 +111,8 @@ defmodule Goatbot.Robot do
 
                 actuator(
                   :left_wheel,
-                  {BB.NSK.Wheel,
-                   forward_pwm: 3,
-                   reverse_pwm: 2,
-                   enable_pin: "PE6",
-                   deadband: param([:motor, :deadband])}
+                  {Goatbot.Wheel,
+                   forward_pwm: 3, reverse_pwm: 2, deadband: param([:motor, :deadband])}
                 )
 
                 link :left_wheel_link do
@@ -143,11 +140,8 @@ defmodule Goatbot.Robot do
 
                 actuator(
                   :right_wheel,
-                  {BB.NSK.Wheel,
-                   forward_pwm: 5,
-                   reverse_pwm: 4,
-                   enable_pin: "PE11",
-                   deadband: param([:motor, :deadband])}
+                  {Goatbot.Wheel,
+                   forward_pwm: 5, reverse_pwm: 4, deadband: param([:motor, :deadband])}
                 )
 
                 link :right_wheel_link do
@@ -800,6 +794,10 @@ defmodule Goatbot.Robot do
     # Not `BB.NSK.Leds.Controller`: that one strobes while fallen. See
     # `Goatbot.Leds`.
     controller(:leds, {Goatbot.Leds, brightness: param([:lights, :led_brightness])})
+
+    # The motors' supply: on while armed. The H-bridges have no sleep pins, so
+    # this is what a disarm takes away. See `Goatbot.Boost`.
+    controller(:boost, Goatbot.Boost)
 
     # Button 1 arms and disarms, button 3 powers off. See `Goatbot.ButtonController`.
     controller(:buttons, Goatbot.ButtonController, simulation: :start)
