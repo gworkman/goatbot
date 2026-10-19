@@ -10,8 +10,12 @@ defmodule Goatbot.Boost do
 
   Set on every state transition from `BB.Safety.armed?/1`, and on start. The
   arm command arms before it transitions, so the boost is up by the time
-  anything can ask the wheels to move. `disarm/1` drives it low from outside
-  the process, so a disarm takes the motor supply away even if this has died.
+  anything can ask the wheels to move.
+
+  `disarm/1` runs from the safety system, possibly after this process has died.
+  A line can only be open once, so while this process is alive and holding PE6,
+  `disarm/1` asks it to drive the pin low; once it has died the line is free,
+  and `disarm/1` opens it and drives it low itself.
   """
 
   use BB.Controller,
@@ -33,6 +37,8 @@ defmodule Goatbot.Boost do
       {:ok, gpio} ->
         # So `terminate/2` runs, and the boost goes off with the robot.
         Process.flag(:trap_exit, true)
+        # So `disarm/1` can find it without any state.
+        Process.register(self(), __MODULE__)
         {:ok, _} = BB.PubSub.subscribe(robot, [:state_machine])
         {:ok, set(%{robot: robot, gpio: gpio, on?: false}, BB.Safety.armed?(robot))}
 
@@ -47,6 +53,7 @@ defmodule Goatbot.Boost do
 
   @impl BB.Controller
   def handle_call(:inspect, _from, state), do: {:reply, state, state}
+  def handle_call(:off, _from, state), do: {:reply, :ok, set(state, false)}
 
   @impl BB.Controller
   def handle_info({:bb, [:state_machine], %Message{payload: %Transition{}}}, state) do
@@ -57,12 +64,20 @@ defmodule Goatbot.Boost do
 
   @impl BB.Controller
   def disarm(opts) do
-    with {:ok, gpio} <- GPIO.open(Keyword.fetch!(opts, :pin), :output) do
-      GPIO.write(gpio, 0)
-      GPIO.close(gpio)
+    case GPIO.open(Keyword.fetch!(opts, :pin), :output, initial_value: 0) do
+      {:ok, gpio} ->
+        GPIO.write(gpio, 0)
+        GPIO.close(gpio)
+
+      {:error, _held} ->
+        GenServer.call(__MODULE__, :off, 1_000)
     end
 
     :ok
+  catch
+    :exit, reason ->
+      Logger.error("Could not switch the boost converter off: #{inspect(reason)}")
+      {:error, reason}
   end
 
   @impl BB.Controller
