@@ -16,11 +16,13 @@ defmodule Goatbot.Balancer do
 
   ## Standing by itself
 
-  While armed and not balancing (`:idle` after arming, or `:fallen`), every
-  sample within `stand_angle` of the setpoint and turning slower than
-  `stand_rate` counts towards `stand_hold`; one that isn't starts the count
-  again. Held there for the whole time, it runs `Goatbot.Robot.stand/0`. A
-  robot lying on its side, or being carried about, never gets there.
+  Whenever it's armed and not balancing, whether `:idle` just after arming or
+  `:fallen` after falling over, every sample within `stand_angle` of the
+  setpoint and turning slower than `stand_rate` counts towards `stand_hold`; one
+  that isn't starts the count again. Held there for the whole time, it runs
+  `Goatbot.Robot.stand/0`. So after a fall, stand it back up and hold it there,
+  and it carries on. A robot lying on its side, or being carried about, never
+  gets there.
 
   These are looser than the catch below. A hand holding the robot up shakes it
   well past `catch_rate` from moment to moment (in 20 s held on the robot, a
@@ -36,7 +38,9 @@ defmodule Goatbot.Balancer do
   then takes over, as the stock `bb_nsk` balancer did. Without that, a stand
   given while the robot was tilted 10°, or still swinging in the hand, started
   at kp * 0.17 = 17 rad/s with the integral climbing, and lurched off further
-  than the velocity loop could bring it back.
+  than the velocity loop could bring it back. Not as tight as the stock 2° and
+  4°/s, though, which after a 10° `stand_angle` left a robot held a few degrees
+  off waiting with its wheels idle: 5° starts at about 9 rad/s, driving speed.
 
   ## Why the integral is large
 
@@ -96,17 +100,17 @@ defmodule Goatbot.Balancer do
       ],
       catch_angle: [
         type: BB.Unit.Option.unit_type(compatible: :degree),
-        default: ~u(2 degree),
+        default: ~u(5 degree),
         doc: "Lean error within which a stand takes over"
       ],
       catch_rate: [
         type: BB.Unit.Option.unit_type(compatible: :degree_per_second),
-        default: ~u(4 degree_per_second),
+        default: ~u(20 degree_per_second),
         doc: "Lean rate below which a stand takes over"
       ],
       stand_angle: [
         type: BB.Unit.Option.unit_type(compatible: :degree),
-        default: ~u(3 degree),
+        default: ~u(10 degree),
         doc: "Lean error within which holding the robot counts towards standing it"
       ],
       stand_rate: [

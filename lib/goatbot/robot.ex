@@ -402,13 +402,15 @@ defmodule Goatbot.Robot do
         doc: "Lean error past which it gives up and waits to be stood back up"
       )
 
-      # Tight on purpose. Any looser and the robot takes over while still moving
-      # in the operator's hand, and then spends its life answering that
-      # transient rather than balancing. `Goatbot.Balancer` waits for both
-      # after every stand before it drives the wheels.
+      # `Goatbot.Balancer` waits for both after every stand before it drives the
+      # wheels. 5° and 20°/s rather than the stock 2° and 4°/s: a stand now
+      # comes after 3 s held near upright (`stand_angle`), and the stock catch
+      # left a robot held a few degrees off sitting in `:balancing` with its
+      # wheels idle. At 5° off the first command is about kp * 0.087 = 9 rad/s,
+      # roughly driving speed, which is no lurch.
       param(:catch_angle,
         type: {:unit, :degree},
-        default: ~u(2 degree),
+        default: ~u(5 degree),
         min: ~u(1 degree),
         max: ~u(30 degree),
         doc: "Lean error within which it will take over again"
@@ -416,18 +418,19 @@ defmodule Goatbot.Robot do
 
       param(:catch_rate,
         type: {:unit, :degree_per_second},
-        default: ~u(4 degree_per_second),
+        default: ~u(20 degree_per_second),
         min: ~u(1 degree_per_second),
         max: ~u(200 degree_per_second),
         doc: "How still it must be held before taking over, so it can't grab mid-air"
       )
 
       # Armed and held within `stand_angle` and `stand_rate` for `stand_hold`,
-      # it stands by itself. Looser than the catch, which allowed so little
-      # hand shake that holding it for 3 s rarely worked. See `Goatbot.Balancer`.
+      # it stands by itself, whether it was just armed or has fallen over.
+      # Wide, so it's easy to get into: the catch still has to pass once before
+      # the wheels move. See `Goatbot.Balancer`.
       param(:stand_angle,
         type: {:unit, :degree},
-        default: ~u(3 degree),
+        default: ~u(10 degree),
         min: ~u(1 degree),
         max: ~u(15 degree),
         doc: "Lean error within which holding the robot counts towards standing it"
