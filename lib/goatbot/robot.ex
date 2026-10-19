@@ -265,6 +265,17 @@ defmodule Goatbot.Robot do
       )
     end
 
+    group :lights do
+      # 12 is 30% of the stock 40, which was hard on the eyes at a desk.
+      param(:led_brightness,
+        type: :integer,
+        default: 12,
+        min: 1,
+        max: 255,
+        doc: "NeoPixel brightness at the top of a breath, out of 255"
+      )
+    end
+
     group :sampling do
       # This is the balance loop's rate. The robot falls with a 68ms time
       # constant, so samples per fall matter more than they sound — see
@@ -756,7 +767,9 @@ defmodule Goatbot.Robot do
     #    drive_release: param([:drive, :release])}
     # )
 
-    controller(:leds, {BB.NSK.Leds.Controller, brightness: 40})
+    # Not `BB.NSK.Leds.Controller`: that one strobes while fallen. See
+    # `Goatbot.Leds`.
+    controller(:leds, {Goatbot.Leds, brightness: param([:lights, :led_brightness])})
   end
 
   states do
