@@ -266,10 +266,10 @@ defmodule Goatbot.Robot do
     end
 
     group :lights do
-      # 12 is 30% of the stock 40, which was hard on the eyes at a desk.
+      # Below the stock 40, which was hard on the eyes at a desk; 12 was too dim.
       param(:led_brightness,
         type: :integer,
-        default: 12,
+        default: 30,
         min: 1,
         max: 255,
         doc: "NeoPixel brightness at the top of a breath, out of 255"

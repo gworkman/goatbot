@@ -17,7 +17,7 @@ defmodule Goatbot.Leds do
     options_schema: [
       brightness: [
         type: :non_neg_integer,
-        default: 12,
+        default: 30,
         doc: "Brightness at the top of a breath, 0 to the device's maximum (255)"
       ],
       pulse_period: [
