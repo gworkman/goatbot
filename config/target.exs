@@ -71,8 +71,11 @@ config :mdns_lite,
   # because otherwise any of the devices may respond to nerves.local leading to
   # unpredictable behavior.
 
-  # "goatbot" is for the badge to find the robot by, once it can resolve .local names.
-  hosts: [:hostname, "nerves", "goatbot"],
+  # Besides that, only the robot's own name (`GOATBOT_NAME`, or "goatbot"): not
+  # "nerves" or a shared "goatbot", which every robot would answer to. It's for
+  # the badge to find the robot by, once it can resolve .local names.
+  # `Goatbot.Name` replaces it at boot with any name set on the robot itself.
+  hosts: [:hostname, System.get_env("GOATBOT_NAME", "goatbot")],
   ttl: 120,
 
   # Advertise the following services over mDNS.

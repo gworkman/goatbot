@@ -40,7 +40,8 @@ defmodule GoatbotWeb.ControllerLive do
 
     {:ok,
      assign(socket,
-       page_title: "Goatbot",
+       page_title: Goatbot.Name.get(),
+       name: Goatbot.Name.get(),
        state: robot_state(),
        armed?: armed?(),
        throttle: 0.0,
@@ -98,7 +99,7 @@ defmodule GoatbotWeb.ControllerLive do
     ~H"""
     <main class="controller">
       <header class="status">
-        <span class="robot">Goatbot</span>
+        <span class="robot">{@name}</span>
         <span class={["state", "state-#{@state}"]}>{@state}</span>
       </header>
 

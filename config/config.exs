@@ -6,6 +6,11 @@
 import Config
 config :bb_nsk, name: "goatbot"
 
+# The robot's name, and so its mDNS host: `GOATBOT_NAME=goat2 mix firmware`
+# builds one that answers to goat2.local. `Goatbot.Name.set/1` changes it on the
+# robot without a rebuild. See `Goatbot.Name`.
+config :goatbot, name: System.get_env("GOATBOT_NAME", "goatbot")
+
 # The phone controller, `GoatbotWeb.ControllerLive`. Its JS (and the CSS it
 # imports) is bundled by esbuild into priv/static/assets.
 config :esbuild,

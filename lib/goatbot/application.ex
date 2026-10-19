@@ -51,7 +51,11 @@ defmodule Goatbot.Application do
         },
 
         # The Erlang node the badge drives the robot through, named for the wifi address.
-        Goatbot.Distribution
+        Goatbot.Distribution,
+
+        # Advertise the name set on this robot, if any, over the one it was
+        # built with. Once, at boot. See `Goatbot.Name`.
+        {Task, &Goatbot.Name.apply_name/0}
       ]
     end
   end
