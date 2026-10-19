@@ -17,10 +17,17 @@ defmodule Goatbot.Balancer do
   ## Standing by itself
 
   While armed and not balancing (`:idle` after arming, or `:fallen`), every
-  sample that would pass the catch below counts towards `stand_hold`; one that
-  wouldn't starts the count again. Held there for the whole time, it runs
-  `Goatbot.Robot.stand/0`. A robot lying on its side, or being carried about,
-  never gets there.
+  sample within `stand_angle` of the setpoint and turning slower than
+  `stand_rate` counts towards `stand_hold`; one that isn't starts the count
+  again. Held there for the whole time, it runs `Goatbot.Robot.stand/0`. A
+  robot lying on its side, or being carried about, never gets there.
+
+  These are looser than the catch below. A hand holding the robot up shakes it
+  well past `catch_rate` from moment to moment (in 20 s held on the robot, a
+  tenth of the samples were over 8.7°/s), so asking for the catch on every
+  sample for 3 s almost never got there. Three seconds near upright is the
+  test of being held still; the catch still has to pass once after that
+  before the wheels move.
 
   ## Catching
 
@@ -96,6 +103,16 @@ defmodule Goatbot.Balancer do
         type: BB.Unit.Option.unit_type(compatible: :degree_per_second),
         default: ~u(4 degree_per_second),
         doc: "Lean rate below which a stand takes over"
+      ],
+      stand_angle: [
+        type: BB.Unit.Option.unit_type(compatible: :degree),
+        default: ~u(3 degree),
+        doc: "Lean error within which holding the robot counts towards standing it"
+      ],
+      stand_rate: [
+        type: BB.Unit.Option.unit_type(compatible: :degree_per_second),
+        default: ~u(15 degree_per_second),
+        doc: "Lean rate below which holding the robot counts towards standing it"
       ],
       stand_hold: [
         type: :float,
@@ -218,7 +235,7 @@ defmodule Goatbot.Balancer do
   # No offset outside `:balancing`: the velocity loop only publishes one while
   # balancing, and the transition cleared the last.
   defp wait_to_stand(state, lean, rate, now) do
-    upright? = catchable?(lean - state.setpoint, rate, state.catch_angle, state.catch_rate)
+    upright? = catchable?(lean - state.setpoint, rate, state.stand_angle, state.stand_rate)
 
     case hold(state.upright_since, upright?, now, state.stand_hold) do
       {:stand, since} ->
@@ -337,6 +354,8 @@ defmodule Goatbot.Balancer do
       fall_angle: Units.to_radians(Keyword.fetch!(opts, :fall_angle)),
       catch_angle: Units.to_radians(Keyword.fetch!(opts, :catch_angle)),
       catch_rate: Units.to_radians_per_second(Keyword.fetch!(opts, :catch_rate)),
+      stand_angle: Units.to_radians(Keyword.fetch!(opts, :stand_angle)),
+      stand_rate: Units.to_radians_per_second(Keyword.fetch!(opts, :stand_rate)),
       stand_hold: Keyword.fetch!(opts, :stand_hold),
       offset_timeout: Keyword.fetch!(opts, :offset_timeout),
       max_wheel_speed: Keyword.fetch!(opts, :max_wheel_speed),

@@ -428,8 +428,25 @@ defmodule Goatbot.Robot do
         doc: "How still it must be held before taking over, so it can't grab mid-air"
       )
 
-      # Armed and held within `catch_angle` and `catch_rate` this long, it
-      # stands by itself. See `Goatbot.Balancer`.
+      # Armed and held within `stand_angle` and `stand_rate` for `stand_hold`,
+      # it stands by itself. Looser than the catch, which allowed so little
+      # hand shake that holding it for 3 s rarely worked. See `Goatbot.Balancer`.
+      param(:stand_angle,
+        type: {:unit, :degree},
+        default: ~u(3 degree),
+        min: ~u(1 degree),
+        max: ~u(15 degree),
+        doc: "Lean error within which holding the robot counts towards standing it"
+      )
+
+      param(:stand_rate,
+        type: {:unit, :degree_per_second},
+        default: ~u(15 degree_per_second),
+        min: ~u(1 degree_per_second),
+        max: ~u(100 degree_per_second),
+        doc: "Lean rate below which holding the robot counts towards standing it"
+      )
+
       param(:stand_hold,
         type: :float,
         default: 3.0,
@@ -715,6 +732,8 @@ defmodule Goatbot.Robot do
        fall_angle: param([:balance, :fall_angle]),
        catch_angle: param([:balance, :catch_angle]),
        catch_rate: param([:balance, :catch_rate]),
+       stand_angle: param([:balance, :stand_angle]),
+       stand_rate: param([:balance, :stand_rate]),
        stand_hold: param([:balance, :stand_hold])},
       # No hardware of its own (it only publishes to the wheels, which are
       # swapped for simulated ones), so it can run under SIMULATE too.
