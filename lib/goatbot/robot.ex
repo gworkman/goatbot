@@ -770,6 +770,9 @@ defmodule Goatbot.Robot do
     # Not `BB.NSK.Leds.Controller`: that one strobes while fallen. See
     # `Goatbot.Leds`.
     controller(:leds, {Goatbot.Leds, brightness: param([:lights, :led_brightness])})
+
+    # Button 1 arms and disarms, button 3 powers off. See `Goatbot.ButtonController`.
+    controller(:buttons, Goatbot.ButtonController, simulation: :start)
   end
 
   states do
