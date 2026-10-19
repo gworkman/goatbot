@@ -399,7 +399,8 @@ defmodule Goatbot.Robot do
 
       # Tight on purpose. Any looser and the robot takes over while still moving
       # in the operator's hand, and then spends its life answering that
-      # transient rather than balancing.
+      # transient rather than balancing. `Goatbot.Balancer` waits for both
+      # after every stand before it drives the wheels.
       param(:catch_angle,
         type: {:unit, :degree},
         default: ~u(2 degree),
@@ -672,7 +673,9 @@ defmodule Goatbot.Robot do
        ki: param([:balance, :integral_gain]),
        kd: param([:balance, :derivative_gain]),
        integral_limit: param([:balance, :integral_limit]),
-       fall_angle: param([:balance, :fall_angle])},
+       fall_angle: param([:balance, :fall_angle]),
+       catch_angle: param([:balance, :catch_angle]),
+       catch_rate: param([:balance, :catch_rate])},
       # No hardware of its own (it only publishes to the wheels, which are
       # swapped for simulated ones), so it can run under SIMULATE too.
       simulation: :start

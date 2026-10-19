@@ -13,6 +13,15 @@ defmodule Goatbot.Balancer do
   upright, then run `Goatbot.Robot.stand/0` to hand it over. If the lean error
   passes `fall_angle`, it brakes the wheels and runs `Goatbot.Robot.fall/0`.
 
+  ## Catching
+
+  A stand doesn't drive the wheels straight away. It waits until the lean is
+  within `catch_angle` of the target and turning slower than `catch_rate`,
+  then takes over, as the stock `bb_nsk` balancer did. Without that, a stand
+  given while the robot was tilted 10°, or still swinging in the hand, started
+  at kp * 0.17 = 17 rad/s with the integral climbing, and lurched off further
+  than the velocity loop could bring it back.
+
   ## Why the integral is large
 
   The wheels behave like a speed servo: torque goes with the command minus the
@@ -47,6 +56,8 @@ defmodule Goatbot.Balancer do
   zero, so if that controller stops, this is a plain PID loop again.
   """
 
+  import BB.Unit
+
   use BB.Controller,
     options_schema: [
       setpoint: [
@@ -66,6 +77,16 @@ defmodule Goatbot.Balancer do
         type: BB.Unit.Option.unit_type(compatible: :degree),
         required: true,
         doc: "Lean error past which it gives up"
+      ],
+      catch_angle: [
+        type: BB.Unit.Option.unit_type(compatible: :degree),
+        default: ~u(2 degree),
+        doc: "Lean error within which a stand takes over"
+      ],
+      catch_rate: [
+        type: BB.Unit.Option.unit_type(compatible: :degree_per_second),
+        default: ~u(4 degree_per_second),
+        doc: "Lean rate below which a stand takes over"
       ],
       max_wheel_speed: [
         type: :float,
@@ -116,7 +137,8 @@ defmodule Goatbot.Balancer do
       offset_at: nil,
       differential: 0.0,
       differential_at: nil,
-      target: nil
+      target: nil,
+      caught?: false
     }
 
     {:ok, configure(opts, state)}
@@ -133,7 +155,7 @@ defmodule Goatbot.Balancer do
   @impl BB.Controller
   def handle_info({:bb, [:state_machine], %Message{payload: %Transition{to: to}}}, state) do
     # Start every attempt from a clean slate: no stale integral, no huge dt,
-    # no offset left over from last time.
+    # no offset left over from last time, and nothing driven until it's caught.
     {:noreply,
      %{
        state
@@ -145,7 +167,8 @@ defmodule Goatbot.Balancer do
          offset_at: nil,
          differential: 0.0,
          differential_at: nil,
-         target: nil
+         target: nil,
+         caught?: false
      }}
   end
 
@@ -170,31 +193,50 @@ defmodule Goatbot.Balancer do
     target = state.setpoint + current_offset(state, now)
     error = lean - target
 
-    if abs(error) > state.fall_angle do
-      fall(state)
-    else
-      dt = if state.last, do: (now - state.last) / 1_000_000_000, else: 0.0
+    cond do
+      abs(error) > state.fall_angle ->
+        fall(state)
 
-      integral =
-        (state.integral + error * dt)
-        |> max(-state.integral_limit)
-        |> min(state.integral_limit)
+      state.caught? or catchable?(error, rate, state.catch_angle, state.catch_rate) ->
+        balance(%{state | caught?: true}, error, rate, target, now)
 
-      # The gyro's rate rather than a differentiated error: it's measured
-      # directly, so it's far less noisy.
-      command = state.kp * error + state.ki * integral + state.kd * rate
-
-      # Leaning forward is positive, and the fix is to drive forward under it,
-      # so both wheels take the command's sign; turning runs one faster than the
-      # other, with whatever headroom balancing leaves.
-      headroom = max(state.max_wheel_speed - abs(command), 0.0)
-      differential = current_differential(state, now) |> max(-headroom) |> min(headroom)
-
-      BB.Actuator.set_velocity(state.robot, state.left_wheel, command + differential)
-      BB.Actuator.set_velocity(state.robot, state.right_wheel, command - differential)
-
-      %{state | integral: integral, last: now, last_command: command, target: target}
+      # Not still enough yet: leave the wheels alone, and keep `last` unset so
+      # the first step after the catch doesn't integrate the wait.
+      true ->
+        %{state | target: target}
     end
+  end
+
+  @doc """
+  Whether a robot `error` radians off its target and leaning at `rate` rad/s is
+  near enough and still enough to take over.
+  """
+  @spec catchable?(float, float, float, float) :: boolean
+  def catchable?(error, rate, catch_angle, catch_rate),
+    do: abs(error) <= catch_angle and abs(rate) <= catch_rate
+
+  defp balance(state, error, rate, target, now) do
+    dt = if state.last, do: (now - state.last) / 1_000_000_000, else: 0.0
+
+    integral =
+      (state.integral + error * dt)
+      |> max(-state.integral_limit)
+      |> min(state.integral_limit)
+
+    # The gyro's rate rather than a differentiated error: it's measured
+    # directly, so it's far less noisy.
+    command = state.kp * error + state.ki * integral + state.kd * rate
+
+    # Leaning forward is positive, and the fix is to drive forward under it,
+    # so both wheels take the command's sign; turning runs one faster than the
+    # other, with whatever headroom balancing leaves.
+    headroom = max(state.max_wheel_speed - abs(command), 0.0)
+    differential = current_differential(state, now) |> max(-headroom) |> min(headroom)
+
+    BB.Actuator.set_velocity(state.robot, state.left_wheel, command + differential)
+    BB.Actuator.set_velocity(state.robot, state.right_wheel, command - differential)
+
+    %{state | integral: integral, last: now, last_command: command, target: target}
   end
 
   defp current_differential(%{differential_at: nil}, _now), do: 0.0
@@ -229,6 +271,8 @@ defmodule Goatbot.Balancer do
       kd: Keyword.fetch!(opts, :kd),
       integral_limit: Keyword.fetch!(opts, :integral_limit),
       fall_angle: Units.to_radians(Keyword.fetch!(opts, :fall_angle)),
+      catch_angle: Units.to_radians(Keyword.fetch!(opts, :catch_angle)),
+      catch_rate: Units.to_radians_per_second(Keyword.fetch!(opts, :catch_rate)),
       offset_timeout: Keyword.fetch!(opts, :offset_timeout),
       max_wheel_speed: Keyword.fetch!(opts, :max_wheel_speed),
       left_wheel: Keyword.fetch!(opts, :left_wheel),
